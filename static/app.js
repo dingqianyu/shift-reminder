@@ -4,14 +4,25 @@ month.setDate(1);
 let shifts = {};
 let pickedDay = null;
 let filterShift = null;
+let selectedEmployee = localStorage.selectedEmployee || localStorage.editor || "默认员工";
 const holidayCache = {};
 const lunarFormatter = new Intl.DateTimeFormat("zh-CN-u-ca-chinese", {month: "long", day: "numeric"});
 
 const editor = $("#editor");
+const employeeSelect = $("#employee-select");
 const picker = $("#shift-picker");
 
 editor.value = localStorage.editor || "";
-editor.oninput = () => localStorage.editor = editor.value;
+editor.oninput = () => {
+  localStorage.editor = editor.value;
+  if (editor.value.trim()) ensureEmployeeOption(editor.value.trim(), false);
+};
+editor.onchange = () => {
+  const name = editor.value.trim();
+  if (!name) return;
+  ensureEmployeeOption(name, true);
+  selectEmployee(name);
+};
 
 async function api(path, opt = {}) {
   const r = await fetch(path, {headers: {"Content-Type": "application/json"}, ...opt});
@@ -34,6 +45,29 @@ function toast(t) {
 function escapeHtml(s = "") {
   return s.replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 }
+
+function ensureEmployeeOption(name, selected = false) {
+  const clean = (name || "").trim() || "默认员工";
+  const exists = [...employeeSelect.options].some(o => o.value === clean);
+  if (!exists) {
+    const option = document.createElement("option");
+    option.value = clean;
+    option.textContent = clean;
+    employeeSelect.append(option);
+  }
+  if (selected) employeeSelect.value = clean;
+}
+
+function selectEmployee(name) {
+  selectedEmployee = (name || "").trim() || "默认员工";
+  localStorage.selectedEmployee = selectedEmployee;
+  ensureEmployeeOption(selectedEmployee, true);
+  hidePicker();
+  $("#selected-info").textContent = `正在查看 ${selectedEmployee} 的排班`;
+  loadShifts();
+}
+
+employeeSelect.onchange = () => selectEmployee(employeeSelect.value);
 
 $("#login-form").onsubmit = async e => {
   e.preventDefault();
@@ -119,6 +153,9 @@ function render() {
   const cal = $("#calendar");
   cal.innerHTML = "";
   $("#month-title").textContent = `${month.getFullYear()} 年 ${month.getMonth() + 1} 月`;
+  $("#mode-hint").textContent = filterShift
+    ? `正在查看 ${selectedEmployee} 的${filterShift} · 其他日期已暗下去，再点一次取消`
+    : `正在查看 ${selectedEmployee} 的排班 · 点击日期后选择班次`;
   const legalHolidays = getLegalHolidays(month.getFullYear());
 
   const offset = (new Date(month.getFullYear(), month.getMonth(), 1).getDay() + 6) % 7;
@@ -150,11 +187,11 @@ function openPicker(e, day, s) {
 
   $("#picker-day").textContent = day;
   $("#picker-current").textContent = s
-    ? `当前：${s.shift} · ${s.updated_by} 于 ${s.updated_at.replace("T", " ")} 修改`
-    : "当前：暂未排班";
+    ? `当前：${selectedEmployee} ${s.shift} · ${s.updated_by} 于 ${s.updated_at.replace("T", " ")} 修改`
+    : `当前：${selectedEmployee} 暂未排班`;
   $("#selected-info").textContent = s
-    ? `${day} · ${s.shift} · ${s.updated_by} 于 ${s.updated_at.replace("T", " ")} 修改`
-    : `${day} · 暂未排班`;
+    ? `${day} · ${selectedEmployee} · ${s.shift} · ${s.updated_by} 于 ${s.updated_at.replace("T", " ")} 修改`
+    : `${day} · ${selectedEmployee} · 暂未排班`;
 
   picker.hidden = false;
   const rect = e.currentTarget.getBoundingClientRect();
@@ -179,11 +216,11 @@ async function setShift(shift) {
 
   try {
     if (shift === "清除") {
-      await api(`/api/shift?day=${pickedDay}&editor=${encodeURIComponent(editor.value)}`, {method: "DELETE"});
+      await api(`/api/shift?day=${pickedDay}&employee=${encodeURIComponent(selectedEmployee)}&editor=${encodeURIComponent(editor.value)}`, {method: "DELETE"});
       toast("已清除排班");
     } else {
-      await api("/api/shift", {method: "POST", body: JSON.stringify({day: pickedDay, shift, editor: editor.value})});
-      toast(`已设为${shift}`);
+      await api("/api/shift", {method: "POST", body: JSON.stringify({day: pickedDay, shift, employee: selectedEmployee, editor: editor.value})});
+      toast(`${selectedEmployee} 已设为${shift}`);
     }
     hidePicker();
     await loadShifts();
@@ -208,9 +245,23 @@ document.addEventListener("click", e => {
 
 async function loadShifts() {
   const m = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
-  const rows = await api(`/api/shifts?month=${m}`);
+  const rows = await api(`/api/shifts?month=${m}&employee=${encodeURIComponent(selectedEmployee)}`);
   shifts = Object.fromEntries(rows.map(x => [x.day, x]));
   render();
+}
+
+async function loadEmployees() {
+  const rows = await api("/api/employees");
+  employeeSelect.innerHTML = "";
+  const names = [...new Set([
+    selectedEmployee,
+    editor.value.trim(),
+    ...rows.map(x => x.name)
+  ].filter(Boolean))];
+  if (!names.length) names.push("默认员工");
+  names.forEach(name => ensureEmployeeOption(name));
+  if (!names.includes(selectedEmployee)) selectedEmployee = names[0];
+  ensureEmployeeOption(selectedEmployee, true);
 }
 
 async function loadSettings() {
@@ -224,7 +275,7 @@ async function loadSettings() {
 
 async function loadAudit() {
   const rows = await api("/api/audit");
-  $("#audit").innerHTML = rows.map(x => `<div class="audit-item"><b>${escapeHtml(x.editor)}</b> ${x.action === "delete" ? "清除了" : `设为 ${x.shift}`} ${x.day}<br><span>${x.created_at.replace("T", " ")}</span></div>`).join("") || "<span>暂无修改</span>";
+  $("#audit").innerHTML = rows.map(x => `<div class="audit-item"><b>${escapeHtml(x.editor)}</b> ${x.action === "delete" ? "清除了" : `设为 ${x.shift}`} <em>${escapeHtml(x.employee || "默认员工")}</em> ${x.day}<br><span>${x.created_at.replace("T", " ")}</span></div>`).join("") || "<span>暂无修改</span>";
 }
 
 $("#save-times").onclick = async () => {
@@ -260,6 +311,7 @@ $("#test-push").onclick = async () => {
 };
 
 async function loadAll() {
+  await loadEmployees();
   await Promise.all([loadShifts(), loadSettings(), loadAudit()]);
 }
 

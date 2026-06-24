@@ -43,10 +43,12 @@ def init_db() -> None:
         conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS shifts (
-                day TEXT PRIMARY KEY,
+                employee TEXT NOT NULL DEFAULT '默认员工',
+                day TEXT NOT NULL,
                 shift TEXT NOT NULL,
                 updated_by TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (employee, day)
             );
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -57,6 +59,7 @@ def init_db() -> None:
                 day TEXT NOT NULL,
                 action TEXT NOT NULL,
                 shift TEXT,
+                employee TEXT,
                 editor TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
@@ -66,6 +69,28 @@ def init_db() -> None:
             );
             """
         )
+        shift_cols = [row["name"] for row in conn.execute("PRAGMA table_info(shifts)")]
+        if "employee" not in shift_cols:
+            conn.executescript(
+                """
+                ALTER TABLE shifts RENAME TO shifts_old;
+                CREATE TABLE shifts (
+                    employee TEXT NOT NULL DEFAULT '默认员工',
+                    day TEXT NOT NULL,
+                    shift TEXT NOT NULL,
+                    updated_by TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (employee, day)
+                );
+                INSERT OR REPLACE INTO shifts(employee, day, shift, updated_by, updated_at)
+                SELECT COALESCE(NULLIF(updated_by, ''), '默认员工'), day, shift, updated_by, updated_at
+                FROM shifts_old;
+                DROP TABLE shifts_old;
+                """
+            )
+        audit_cols = [row["name"] for row in conn.execute("PRAGMA table_info(audit)")]
+        if "employee" not in audit_cols:
+            conn.execute("ALTER TABLE audit ADD COLUMN employee TEXT")
         defaults = {
             "reminder_times": "18:00",
             "server_chan_key": "",
@@ -136,14 +161,16 @@ def reminder_loop() -> None:
                 delivered = conn.execute(
                     "SELECT 1 FROM deliveries WHERE delivery_key = ?", (delivery_key,)
                 ).fetchone()
-                shift = conn.execute(
-                    "SELECT shift FROM shifts WHERE day = ?", (tomorrow,)
-                ).fetchone()
-                if current_time in times and send_key and shift and not delivered:
+                rows = conn.execute(
+                    "SELECT employee, shift FROM shifts WHERE day = ? ORDER BY employee",
+                    (tomorrow,),
+                ).fetchall()
+                if current_time in times and send_key and rows and not delivered:
+                    lines = [f"{row['employee']}：{row['shift']}" for row in rows]
                     send_server_chan(
                         send_key,
-                        f"明日班次提醒 · {shift['shift']}",
-                        f"日期：{tomorrow}\n\n班次：{shift['shift']}",
+                        f"明日班次提醒 · {len(rows)} 人",
+                        f"日期：{tomorrow}\n\n" + "\n".join(lines),
                     )
                     conn.execute(
                         "INSERT INTO deliveries(delivery_key, created_at) VALUES (?, ?)",
@@ -203,13 +230,27 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/shifts":
             month = urllib.parse.parse_qs(parsed.query).get("month", [""])[0]
+            employee = urllib.parse.parse_qs(parsed.query).get("employee", ["默认员工"])[0].strip()[:30] or "默认员工"
             with db() as conn:
                 rows = conn.execute(
-                    "SELECT day, shift, updated_by, updated_at FROM shifts "
-                    "WHERE day LIKE ? ORDER BY day",
-                    (f"{month}-%",),
+                    "SELECT employee, day, shift, updated_by, updated_at FROM shifts "
+                    "WHERE employee = ? AND day LIKE ? ORDER BY day",
+                    (employee, f"{month}-%"),
                 ).fetchall()
             return self.send_json([dict(row) for row in rows])
+        if parsed.path == "/api/employees":
+            with db() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT employee AS name FROM shifts
+                    UNION
+                    SELECT employee AS name FROM audit WHERE employee IS NOT NULL AND employee != ''
+                    UNION
+                    SELECT editor AS name FROM audit WHERE editor IS NOT NULL AND editor != ''
+                    ORDER BY name
+                    """
+                ).fetchall()
+            return self.send_json([dict(row) for row in rows if row["name"]])
         if parsed.path == "/api/settings":
             with db() as conn:
                 values = {
@@ -221,7 +262,7 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/audit":
             with db() as conn:
                 rows = conn.execute(
-                    "SELECT day, action, shift, editor, created_at FROM audit "
+                    "SELECT day, action, shift, employee, editor, created_at FROM audit "
                     "ORDER BY id DESC LIMIT 20"
                 ).fetchall()
             return self.send_json([dict(row) for row in rows])
@@ -252,20 +293,21 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/shift":
             day = str(data.get("day", ""))
             shift = str(data.get("shift", ""))
+            employee = str(data.get("employee", "默认员工")).strip()[:30] or "默认员工"
             editor = str(data.get("editor", "匿名")).strip()[:30] or "匿名"
             if shift not in {"早班", "白班", "夜班", "转班"}:
                 return self.send_json({"error": "无效班次"}, HTTPStatus.BAD_REQUEST)
             now = local_now().isoformat(timespec="seconds")
             with db() as conn:
                 conn.execute(
-                    "INSERT INTO shifts(day, shift, updated_by, updated_at) VALUES (?, ?, ?, ?) "
-                    "ON CONFLICT(day) DO UPDATE SET shift=excluded.shift, "
+                    "INSERT INTO shifts(employee, day, shift, updated_by, updated_at) VALUES (?, ?, ?, ?, ?) "
+                    "ON CONFLICT(employee, day) DO UPDATE SET shift=excluded.shift, "
                     "updated_by=excluded.updated_by, updated_at=excluded.updated_at",
-                    (day, shift, editor, now),
+                    (employee, day, shift, editor, now),
                 )
                 conn.execute(
-                    "INSERT INTO audit(day, action, shift, editor, created_at) VALUES (?, 'set', ?, ?, ?)",
-                    (day, shift, editor, now),
+                    "INSERT INTO audit(day, action, shift, employee, editor, created_at) VALUES (?, 'set', ?, ?, ?, ?)",
+                    (day, shift, employee, editor, now),
                 )
             return self.send_json({"ok": True})
         if parsed.path == "/api/settings":
@@ -317,14 +359,15 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
         params = urllib.parse.parse_qs(parsed.query)
         day = params.get("day", [""])[0]
+        employee = params.get("employee", ["默认员工"])[0].strip()[:30] or "默认员工"
         editor = params.get("editor", ["匿名"])[0][:30]
         now = local_now().isoformat(timespec="seconds")
         with db() as conn:
-            conn.execute("DELETE FROM shifts WHERE day = ?", (day,))
+            conn.execute("DELETE FROM shifts WHERE employee = ? AND day = ?", (employee, day))
             conn.execute(
-                "INSERT INTO audit(day, action, shift, editor, created_at) "
-                "VALUES (?, 'delete', NULL, ?, ?)",
-                (day, editor, now),
+                "INSERT INTO audit(day, action, shift, employee, editor, created_at) "
+                "VALUES (?, 'delete', NULL, ?, ?, ?)",
+                (day, employee, editor, now),
             )
         self.send_json({"ok": True})
 
