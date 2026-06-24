@@ -15,6 +15,20 @@
 - Server酱微信推送次日班次
 - SQLite 数据持久化
 
+## 页面截图
+
+### 主界面
+
+![主界面](docs/images/dashboard.png)
+
+### 班次选择
+
+![班次选择](docs/images/shift-picker.png)
+
+### 班次筛选
+
+![班次筛选](docs/images/shift-filter.png)
+
 ## 一键部署
 
 如果已经安装 Docker 和 Docker Compose：
