@@ -4,25 +4,17 @@ month.setDate(1);
 let shifts = {};
 let pickedDay = null;
 let filterShift = null;
-let selectedEmployee = localStorage.selectedEmployee || localStorage.editor || "默认员工";
+let selectedEmployee = localStorage.selectedEmployee || "默认员工";
 const holidayCache = {};
 const lunarFormatter = new Intl.DateTimeFormat("zh-CN-u-ca-chinese", {month: "long", day: "numeric"});
 
 const editor = $("#editor");
 const employeeSelect = $("#employee-select");
+const newEmployee = $("#new-employee");
 const picker = $("#shift-picker");
 
 editor.value = localStorage.editor || "";
-editor.oninput = () => {
-  localStorage.editor = editor.value;
-  if (editor.value.trim()) ensureEmployeeOption(editor.value.trim(), false);
-};
-editor.onchange = () => {
-  const name = editor.value.trim();
-  if (!name) return;
-  ensureEmployeeOption(name, true);
-  selectEmployee(name);
-};
+editor.oninput = () => localStorage.editor = editor.value;
 
 async function api(path, opt = {}) {
   const r = await fetch(path, {headers: {"Content-Type": "application/json"}, ...opt});
@@ -68,6 +60,49 @@ function selectEmployee(name) {
 }
 
 employeeSelect.onchange = () => selectEmployee(employeeSelect.value);
+
+$("#add-employee").onclick = async () => {
+  const name = newEmployee.value.trim();
+  if (!name) {
+    toast("请先输入员工姓名");
+    newEmployee.focus();
+    return;
+  }
+  try {
+    await api("/api/employee", {method: "POST", body: JSON.stringify({name})});
+    newEmployee.value = "";
+    selectedEmployee = name;
+    localStorage.selectedEmployee = name;
+    await loadEmployees();
+    await loadShifts();
+    toast(`已添加员工：${name}`);
+  } catch (e) {
+    toast(e.message);
+  }
+};
+
+newEmployee.addEventListener("keydown", e => {
+  if (e.key === "Enter") $("#add-employee").click();
+});
+
+$("#delete-employee").onclick = async () => {
+  const name = employeeSelect.value;
+  if (!name) return;
+  if (!confirm(`确定删除员工「${name}」吗？这个员工的排班也会一起删除。`)) return;
+  try {
+    await api(`/api/employee?name=${encodeURIComponent(name)}`, {method: "DELETE"});
+    localStorage.removeItem("selectedEmployee");
+    selectedEmployee = "默认员工";
+    await loadEmployees();
+    selectedEmployee = employeeSelect.value || "默认员工";
+    localStorage.selectedEmployee = selectedEmployee;
+    await loadShifts();
+    await loadAudit();
+    toast(`已删除员工：${name}`);
+  } catch (e) {
+    toast(e.message);
+  }
+};
 
 $("#login-form").onsubmit = async e => {
   e.preventDefault();
@@ -253,11 +288,7 @@ async function loadShifts() {
 async function loadEmployees() {
   const rows = await api("/api/employees");
   employeeSelect.innerHTML = "";
-  const names = [...new Set([
-    selectedEmployee,
-    editor.value.trim(),
-    ...rows.map(x => x.name)
-  ].filter(Boolean))];
+  const names = [...new Set(rows.map(x => x.name).filter(Boolean))];
   if (!names.length) names.push("默认员工");
   names.forEach(name => ensureEmployeeOption(name));
   if (!names.includes(selectedEmployee)) selectedEmployee = names[0];

@@ -54,6 +54,10 @@ def init_db() -> None:
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS employees (
+                name TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS audit (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 day TEXT NOT NULL,
@@ -91,6 +95,35 @@ def init_db() -> None:
         audit_cols = [row["name"] for row in conn.execute("PRAGMA table_info(audit)")]
         if "employee" not in audit_cols:
             conn.execute("ALTER TABLE audit ADD COLUMN employee TEXT")
+        now = local_now().isoformat(timespec="seconds")
+        conn.execute(
+            "INSERT OR IGNORE INTO employees(name, created_at) VALUES (?, ?)",
+            ("默认员工", now),
+        )
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO employees(name, created_at)
+            SELECT employee, ? FROM shifts
+            WHERE employee IS NOT NULL AND employee != ''
+            """,
+            (now,),
+        )
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO employees(name, created_at)
+            SELECT employee, ? FROM audit
+            WHERE employee IS NOT NULL AND employee != ''
+            """,
+            (now,),
+        )
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO employees(name, created_at)
+            SELECT editor, ? FROM audit
+            WHERE editor IS NOT NULL AND editor != ''
+            """,
+            (now,),
+        )
         defaults = {
             "reminder_times": "18:00",
             "server_chan_key": "",
@@ -241,14 +274,7 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/employees":
             with db() as conn:
                 rows = conn.execute(
-                    """
-                    SELECT employee AS name FROM shifts
-                    UNION
-                    SELECT employee AS name FROM audit WHERE employee IS NOT NULL AND employee != ''
-                    UNION
-                    SELECT editor AS name FROM audit WHERE editor IS NOT NULL AND editor != ''
-                    ORDER BY name
-                    """
+                    "SELECT name FROM employees ORDER BY name"
                 ).fetchall()
             return self.send_json([dict(row) for row in rows if row["name"]])
         if parsed.path == "/api/settings":
@@ -300,6 +326,10 @@ class Handler(SimpleHTTPRequestHandler):
             now = local_now().isoformat(timespec="seconds")
             with db() as conn:
                 conn.execute(
+                    "INSERT OR IGNORE INTO employees(name, created_at) VALUES (?, ?)",
+                    (employee, now),
+                )
+                conn.execute(
                     "INSERT INTO shifts(employee, day, shift, updated_by, updated_at) VALUES (?, ?, ?, ?, ?) "
                     "ON CONFLICT(employee, day) DO UPDATE SET shift=excluded.shift, "
                     "updated_by=excluded.updated_by, updated_at=excluded.updated_at",
@@ -336,6 +366,17 @@ class Handler(SimpleHTTPRequestHandler):
                         (key,),
                     )
             return self.send_json({"ok": True})
+        if parsed.path == "/api/employee":
+            name = str(data.get("name", "")).strip()[:30]
+            if not name:
+                return self.send_json({"error": "请填写员工姓名"}, HTTPStatus.BAD_REQUEST)
+            now = local_now().isoformat(timespec="seconds")
+            with db() as conn:
+                conn.execute(
+                    "INSERT OR IGNORE INTO employees(name, created_at) VALUES (?, ?)",
+                    (name, now),
+                )
+            return self.send_json({"ok": True})
         if parsed.path == "/api/test-push":
             key = str(data.get("server_chan_key", "")).strip()
             if not key:
@@ -355,6 +396,18 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.require_auth():
             return
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/api/employee":
+            params = urllib.parse.parse_qs(parsed.query)
+            name = params.get("name", [""])[0].strip()[:30]
+            if not name:
+                return self.send_json({"error": "请选择要删除的员工"}, HTTPStatus.BAD_REQUEST)
+            with db() as conn:
+                count = conn.execute("SELECT COUNT(*) AS n FROM employees").fetchone()["n"]
+                if count <= 1:
+                    return self.send_json({"error": "至少保留一个员工"}, HTTPStatus.BAD_REQUEST)
+                conn.execute("DELETE FROM employees WHERE name = ?", (name,))
+                conn.execute("DELETE FROM shifts WHERE employee = ?", (name,))
+            return self.send_json({"ok": True})
         if parsed.path != "/api/shift":
             return self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
         params = urllib.parse.parse_qs(parsed.query)
