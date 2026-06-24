@@ -20,15 +20,15 @@
 
 ### 主界面
 
-![主界面](docs/images/dashboard.png)
+![主界面](docs/images/dashboard.png?v=20260625)
 
 ### 班次选择
 
-![班次选择](docs/images/shift-picker.png)
+![班次选择](docs/images/shift-picker.png?v=20260625)
 
 ### 班次筛选
 
-![班次筛选](docs/images/shift-filter.png)
+![班次筛选](docs/images/shift-filter.png?v=20260625)
 
 ## 一键部署
 
