@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>共享排班</title>
+  <link rel="stylesheet" href="/style.css?v=20260624-7">
+</head>
+<body>
+  <div id="login" class="overlay">
+    <form id="login-form" class="login-card">
+      <div class="brand-mark">排</div>
+      <h1>共享排班</h1>
+      <p>输入团队密码后开始协作</p>
+      <input id="password" type="password" placeholder="团队密码" required autofocus>
+      <button>进入排班表</button>
+      <div id="login-error" class="error"></div>
+    </form>
+  </div>
+
+  <header>
+    <div>
+      <h1>共享排班</h1>
+      <p>多人一起编辑，明日班次准时提醒</p>
+    </div>
+    <div class="identity">
+      <span>我的名字</span>
+      <input id="editor" maxlength="30" placeholder="例如：小李">
+    </div>
+  </header>
+
+  <main>
+    <section class="card calendar-card">
+      <div class="toolbar">
+        <div>
+          <h2>排班日历</h2>
+          <p id="mode-hint">点击日期后选择班次 · 支持早班、白班、夜班、转班</p>
+        </div>
+        <div class="brushes">
+          <button data-brush="早班" class="brush early">早班</button>
+          <button data-brush="白班" class="brush day">白班</button>
+          <button data-brush="夜班" class="brush night">夜班</button>
+          <button data-brush="转班" class="brush transfer">转班</button>
+        </div>
+      </div>
+      <div class="month-nav">
+        <button id="prev">‹</button>
+        <strong id="month-title"></strong>
+        <button id="next">›</button>
+      </div>
+      <div class="weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+      <div id="calendar" class="calendar"></div>
+      <div id="selected-info" class="selected-info">选择日期可查看最后修改人</div>
+      <div id="shift-picker" class="shift-picker" hidden>
+        <div class="picker-head">
+          <div>
+            <strong id="picker-day"></strong>
+            <p id="picker-current"></p>
+          </div>
+          <button id="picker-close" aria-label="关闭">×</button>
+        </div>
+        <div class="picker-options">
+          <button data-pick="早班" class="pick-option early">早班</button>
+          <button data-pick="白班" class="pick-option day">白班</button>
+          <button data-pick="夜班" class="pick-option night">夜班</button>
+          <button data-pick="转班" class="pick-option transfer">转班</button>
+          <button data-pick="清除" class="pick-option erase">清除</button>
+        </div>
+      </div>
+    </section>
+
+    <aside>
+      <section class="card reminder-card">
+        <div class="icon">●</div>
+        <h2>微信提醒</h2>
+        <p>支持多个时间，容器会持续检查并推送次日班次。</p>
+        <label>提醒时间</label>
+        <div class="time-save-row">
+          <input id="times" placeholder="18:00, 21:30">
+          <button id="save-times" class="primary inline-save">保存时间</button>
+        </div>
+        <small>最多 6 个，用逗号分隔</small>
+        <label>Server酱 SendKey</label>
+        <input id="send-key" type="password" placeholder="留空表示不修改">
+        <div class="actions">
+          <button id="test-push" class="secondary">测试推送</button>
+          <button id="save-settings" class="primary">保存设置</button>
+        </div>
+        <div id="settings-status" class="status"></div>
+      </section>
+
+      <section class="card activity-card">
+        <h3>最近修改</h3>
+        <div id="audit"></div>
+      </section>
+    </aside>
+  </main>
+  <div id="toast"></div>
+  <script src="/app.js?v=20260624-5"></script>
+</body>
+</html>

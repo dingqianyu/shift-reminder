@@ -1,0 +1,17 @@
+services:
+  shift-reminder:
+    build: .
+    container_name: shift-reminder
+    restart: unless-stopped
+    ports:
+      - "18080:8080"
+    environment:
+      TZ: Asia/Shanghai
+      APP_PASSWORD: ${APP_PASSWORD:-change-me}
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/session')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
