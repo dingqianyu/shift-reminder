@@ -202,7 +202,7 @@ def reminder_loop() -> None:
                     lines = [f"{row['employee']}：{row['shift']}" for row in rows]
                     send_server_chan(
                         send_key,
-                        f"明日班次提醒 · {len(rows)} 人",
+                        "明日班次提醒",
                         f"日期：{tomorrow}\n\n" + "\n".join(lines),
                     )
                     conn.execute(

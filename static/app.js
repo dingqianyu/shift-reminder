@@ -8,13 +8,9 @@ let selectedEmployee = localStorage.selectedEmployee || "默认员工";
 const holidayCache = {};
 const lunarFormatter = new Intl.DateTimeFormat("zh-CN-u-ca-chinese", {month: "long", day: "numeric"});
 
-const editor = $("#editor");
 const employeeSelect = $("#employee-select");
 const newEmployee = $("#new-employee");
 const picker = $("#shift-picker");
-
-editor.value = localStorage.editor || "";
-editor.oninput = () => localStorage.editor = editor.value;
 
 async function api(path, opt = {}) {
   const r = await fetch(path, {headers: {"Content-Type": "application/json"}, ...opt});
@@ -243,18 +239,13 @@ function hidePicker() {
 
 async function setShift(shift) {
   if (!pickedDay) return;
-  if (!editor.value.trim()) {
-    toast("请先填写你的名字");
-    editor.focus();
-    return;
-  }
 
   try {
     if (shift === "清除") {
-      await api(`/api/shift?day=${pickedDay}&employee=${encodeURIComponent(selectedEmployee)}&editor=${encodeURIComponent(editor.value)}`, {method: "DELETE"});
+      await api(`/api/shift?day=${pickedDay}&employee=${encodeURIComponent(selectedEmployee)}&editor=${encodeURIComponent(selectedEmployee)}`, {method: "DELETE"});
       toast("已清除排班");
     } else {
-      await api("/api/shift", {method: "POST", body: JSON.stringify({day: pickedDay, shift, employee: selectedEmployee, editor: editor.value})});
+      await api("/api/shift", {method: "POST", body: JSON.stringify({day: pickedDay, shift, employee: selectedEmployee, editor: selectedEmployee})});
       toast(`${selectedEmployee} 已设为${shift}`);
     }
     hidePicker();
