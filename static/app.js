@@ -211,6 +211,38 @@ function render() {
     b.onclick = e => openPicker(e, k, s);
     cal.append(b);
   }
+  renderShiftStats();
+}
+
+function renderShiftStats() {
+  const counts = {"早班": 0, "白班": 0, "夜班": 0, "转班": 0};
+  Object.values(shifts).forEach(item => {
+    if (Object.prototype.hasOwnProperty.call(counts, item.shift)) counts[item.shift] += 1;
+  });
+  const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
+  $("#shift-stats").innerHTML = `
+    <div class="stats-title">
+      <span>本月统计</span>
+      <em>${selectedEmployee} · 共 ${total} 天</em>
+    </div>
+    <div class="stats-items">
+      ${Object.entries(counts).map(([name, count]) => `
+        <button class="stat-pill ${name} ${filterShift === name ? "active" : ""}" data-stat-shift="${name}" type="button">
+          <span>${name}</span>
+          <strong>${count}</strong>
+          <em>天</em>
+        </button>
+      `).join("")}
+    </div>
+  `;
+  document.querySelectorAll("[data-stat-shift]").forEach(b => {
+    b.onclick = () => {
+      const shift = b.dataset.statShift;
+      filterShift = filterShift === shift ? null : shift;
+      document.querySelectorAll(".brush").forEach(x => x.classList.toggle("active", x.dataset.brush === filterShift));
+      render();
+    };
+  });
 }
 
 function openPicker(e, day, s) {
