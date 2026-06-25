@@ -200,9 +200,15 @@ def reminder_loop() -> None:
                 ).fetchall()
                 if current_time in times and send_key and rows and not delivered:
                     lines = [f"{row['employee']}：{row['shift']}" for row in rows]
+                    title_items = [f"{row['employee']}{row['shift']}" for row in rows]
+                    title_summary = "、".join(title_items)
+                    if len(title_summary) > 38:
+                        title_summary = "、".join(title_items[:3])
+                        if len(rows) > 3:
+                            title_summary += f"等{len(rows)}人"
                     send_server_chan(
                         send_key,
-                        "明日班次提醒",
+                        f"明日班次：{title_summary}",
                         f"日期：{tomorrow}\n\n" + "\n".join(lines),
                     )
                     conn.execute(
