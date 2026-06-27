@@ -203,12 +203,14 @@ function render() {
     const k = key(d);
     const s = shifts[k];
     const holiday = legalHolidays[k];
+    const isToday = k === key(new Date());
     const b = document.createElement("button");
     const dimmed = filterShift && s?.shift !== filterShift ? "dimmed" : "";
-    b.className = `day-cell ${s?.shift || ""} ${s?.shift ? "has-shift" : ""} ${holiday ? "legal-holiday" : ""} ${k === key(new Date()) ? "today" : ""} ${dimmed}`;
-    b.title = `${k}${s?.shift ? ` · ${selectedEmployee}：${s.shift}` : ""}${holiday ? ` · 法定节假日：${holiday}` : ""}`;
+    b.className = `day-cell ${s?.shift || ""} ${s?.shift ? "has-shift" : ""} ${holiday ? "legal-holiday" : ""} ${isToday ? "today" : ""} ${dimmed}`;
+    b.title = `${k}${isToday ? " · 今天" : ""}${s?.shift ? ` · ${selectedEmployee}：${s.shift}` : ""}${holiday ? ` · 法定节假日：${holiday}` : ""}`;
     b.innerHTML = `
       <span class="date-number">${n}</span>
+      ${isToday ? `<span class="today-tag">今天</span>` : ""}
       ${holiday ? `<span class="holiday-tag">${holiday}</span>` : ""}
       ${s?.shift ? `<span class="shift-name">${s.shift}</span>` : ""}
     `;
