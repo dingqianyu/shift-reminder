@@ -221,11 +221,19 @@ function render() {
 }
 
 function renderShiftStats() {
-  const counts = {"早班": 0, "白班": 0, "夜班": 0, "转班": 0};
-  Object.values(shifts).forEach(item => {
+  const makeCounts = () => ({"早班": 0, "白班": 0, "夜班": 0, "转班": 0});
+  const counts = makeCounts();
+  const workedCounts = makeCounts();
+  const todayKey = key(new Date());
+  const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
+  Object.entries(shifts).forEach(([day, item]) => {
     if (Object.prototype.hasOwnProperty.call(counts, item.shift)) counts[item.shift] += 1;
+    if (day <= todayKey && day.startsWith(monthKey) && Object.prototype.hasOwnProperty.call(workedCounts, item.shift)) {
+      workedCounts[item.shift] += 1;
+    }
   });
   const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
+  const workedTotal = Object.values(workedCounts).reduce((sum, value) => sum + value, 0);
   $("#shift-stats").innerHTML = `
     <div class="stats-title">
       <span>本月统计</span>
@@ -241,9 +249,32 @@ function renderShiftStats() {
       `).join("")}
     </div>
   `;
+  $("#worked-stats").innerHTML = `
+    <div class="stats-title">
+      <span>本月已上</span>
+      <em>${selectedEmployee} · 已上 ${workedTotal} 天</em>
+    </div>
+    <div class="stats-items">
+      ${Object.entries(workedCounts).map(([name, count]) => `
+        <button class="stat-pill ${name} ${filterShift === name ? "active" : ""}" data-worked-shift="${name}" type="button">
+          <span>${name}</span>
+          <strong>${count}</strong>
+          <em>天</em>
+        </button>
+      `).join("")}
+    </div>
+  `;
   document.querySelectorAll("[data-stat-shift]").forEach(b => {
     b.onclick = () => {
       const shift = b.dataset.statShift;
+      filterShift = filterShift === shift ? null : shift;
+      document.querySelectorAll(".brush").forEach(x => x.classList.toggle("active", x.dataset.brush === filterShift));
+      render();
+    };
+  });
+  document.querySelectorAll("[data-worked-shift]").forEach(b => {
+    b.onclick = () => {
+      const shift = b.dataset.workedShift;
       filterShift = filterShift === shift ? null : shift;
       document.querySelectorAll(".brush").forEach(x => x.classList.toggle("active", x.dataset.brush === filterShift));
       render();
