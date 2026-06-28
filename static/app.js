@@ -139,6 +139,32 @@ function key(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function getElapsedDaysInMonth(viewMonth, daysInMonth) {
+  const today = new Date();
+  const viewing = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
+  const current = new Date(today.getFullYear(), today.getMonth(), 1);
+  if (viewing < current) return daysInMonth;
+  if (viewing > current) return 0;
+  return Math.min(today.getDate(), daysInMonth);
+}
+
+function renderMonthProgress(daysInMonth) {
+  const elapsed = getElapsedDaysInMonth(month, daysInMonth);
+  const digits = String(elapsed).padStart(2, "0").split("");
+  $("#month-progress").innerHTML = `
+    <span class="progress-label">本月已过</span>
+    <span class="flip-days" aria-label="${elapsed} 天">
+      ${digits.map(digit => `
+        <span class="flip-card">
+          <span>${digit}</span>
+        </span>
+      `).join("")}
+    </span>
+    <span class="progress-unit">天</span>
+    <span class="progress-total">/ ${daysInMonth} 天</span>
+  `;
+}
+
 function addHoliday(map, date, name) {
   map[key(date)] = name;
 }
@@ -191,6 +217,7 @@ function render() {
 
   const offset = (new Date(month.getFullYear(), month.getMonth(), 1).getDay() + 6) % 7;
   const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  renderMonthProgress(days);
 
   for (let i = 0; i < offset; i++) {
     const e = document.createElement("i");
