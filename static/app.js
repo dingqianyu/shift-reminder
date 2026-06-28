@@ -150,18 +150,26 @@ function getElapsedDaysInMonth(viewMonth, daysInMonth) {
 
 function renderMonthProgress(daysInMonth) {
   const elapsed = getElapsedDaysInMonth(month, daysInMonth);
-  const digits = String(elapsed).padStart(2, "0").split("");
-  $("#month-progress").innerHTML = `
-    <span class="progress-label">本月已过</span>
-    <span class="flip-days" aria-label="${elapsed} 天">
-      ${digits.map(digit => `
-        <span class="flip-card">
-          <span>${digit}</span>
-        </span>
-      `).join("")}
+  const remaining = Math.max(daysInMonth - elapsed, 0);
+  const elapsedDigits = String(elapsed).padStart(2, "0").split("");
+  const remainingDigits = String(remaining).padStart(2, "0").split("");
+  const flip = digits => digits.map(digit => `
+    <span class="flip-card">
+      <span>${digit}</span>
     </span>
-    <span class="progress-unit">天</span>
-    <span class="progress-total">/ ${daysInMonth} 天</span>
+  `).join("");
+  $("#month-progress").innerHTML = `
+    <div class="progress-main">
+      <span class="progress-label">本月已过</span>
+      <span class="flip-days" aria-label="${elapsed} 天">${flip(elapsedDigits)}</span>
+      <span class="progress-unit">天</span>
+    </div>
+    <div class="progress-rest">
+      <span class="progress-label">本月剩余</span>
+      <span class="flip-days remaining" aria-label="${remaining} 天">${flip(remainingDigits)}</span>
+      <span class="progress-unit">天</span>
+    </div>
+    <span class="progress-total">共 ${daysInMonth} 天</span>
   `;
 }
 
